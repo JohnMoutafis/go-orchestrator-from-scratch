@@ -2,89 +2,47 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"strconv"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/golang-collections/collections/queue"
 	"github.com/google/uuid"
 
 	"cube/task"
 	"cube/worker"
+	workerApi "cube/worker/api"
 )
 
-// Init a task container
-func createContainer() (*task.Docker, *task.DockerResult) {
-	c := task.Config{
-		Name:  "test-container-1",
-		Image: "postgres:13",
-		Env: []string{
-			"POSTGRES_USER=cube",
-			"POSTGRES_PASSWORD=secret",
-		},
+func runTasks(w *worker.Worker) {
+	for {
+		if w.Queue.Len() != 0 {
+			result := w.RunTask()
+			if result.Error != nil {
+				log.Printf("Error running task: %v\n", result.Error)
+			}
+		} else {
+			log.Printf("No tasks to process currently.\n")
+		}
+		log.Println("Sleeping for 10 seconds.")
+		time.Sleep(10 * time.Second)
 	}
 
-	// Fix "Error response from daemon: client version 1.48 is too new. Maximum supported API version is 1.47"
-	dc, _ := client.NewClientWithOpts(client.WithVersion("1.47"))
-	d := task.Docker{
-		Client: dc,
-		Config: c,
-	}
-
-	result := d.Run()
-	if result.Error != nil {
-		fmt.Printf("%v\n", result.Error)
-		return nil, nil
-	}
-
-	fmt.Printf("Container %s is running with config %v\n", result.ContainerID, c)
-	return &d, &result
-}
-
-// Terminate a task container
-func stopContainer(d *task.Docker, id string) *task.DockerResult {
-	result := d.Stop(id)
-	if result.Error != nil {
-		fmt.Printf("%v\n", result.Error)
-		return nil
-	}
-
-	fmt.Printf("Container %s has been stopped and removed\n", result.ContainerID)
-	return &result
 }
 
 func main() {
-	db := make(map[uuid.UUID]*task.Task)
+	host := os.Getenv("CUBE_HOST")
+	port, _ := strconv.Atoi(os.Getenv("CUBE_PORT"))
+
+	fmt.Println("Starting Cube worker")
+
 	w := worker.Worker{
 		Queue: *queue.New(),
-		Db:    db,
+		Db:    make(map[uuid.UUID]*task.Task),
 	}
+	api := workerApi.Api{Address: host, Port: port, Worker: &w}
 
-	t := task.Task{
-		ID:    uuid.New(),
-		Name:  "test-container-1",
-		State: task.Scheduled,
-		Image: "strm/helloworld-http",
-	}
-
-	// first time the worker will see the task
-	fmt.Println("starting task")
-	w.AddTask(t)
-	result := w.RunTask()
-	if result.Error != nil {
-		panic(result.Error)
-	}
-
-	t.ContainerID = result.ContainerID
-
-	fmt.Printf("task %s is running in container %s\n", t.ID, t.ContainerID)
-	fmt.Println("Sleepy time")
-	time.Sleep(time.Second * 30)
-
-	fmt.Printf("stopping task %s\n", t.ID)
-	t.State = task.Completed
-	w.AddTask(t)
-	result = w.RunTask()
-	if result.Error != nil {
-		panic(result.Error)
-	}
+	go runTasks(&w)
+	api.Start()
 }
