@@ -34,15 +34,13 @@ func runTasks(w *worker.Worker) {
 func main() {
 	host := os.Getenv("CUBE_HOST")
 	port, _ := strconv.Atoi(os.Getenv("CUBE_PORT"))
-
 	fmt.Println("Starting Cube worker")
-
 	w := worker.Worker{
 		Queue: *queue.New(),
 		Db:    make(map[uuid.UUID]*task.Task),
 	}
 	api := workerApi.Api{Address: host, Port: port, Worker: &w}
-
 	go runTasks(&w)
+	go w.CollectStats()
 	api.Start()
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Tasks
 func (a *Api) StartTaskHandler(w http.ResponseWriter, r *http.Request) {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
@@ -64,4 +65,11 @@ func (a *Api) StopTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Added task %v to stop container %v\n", taskToStop.ID, taskToStop.ContainerID)
 	w.WriteHeader(204)
+}
+
+// Stats
+func (a *Api) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(a.Worker.Stats)
 }
