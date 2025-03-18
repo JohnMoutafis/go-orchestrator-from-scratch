@@ -9,6 +9,8 @@ import (
 
 	"context"
 
+	"slices"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -17,7 +19,10 @@ import (
 	"github.com/moby/moby/pkg/stdcopy"
 )
 
-// Task State
+/**
+* Task State and State Machine
+ */
+// State Definition
 type State int
 
 const (
@@ -29,6 +34,22 @@ const (
 	Failed
 )
 
+// State Machine
+var stateTransitionMap = map[State][]State{
+	Pending:   {Scheduled},
+	Scheduled: {Scheduled, Running, Failed},
+	Running:   {Running, Completed, Failed},
+	Completed: {},
+	Failed:    {},
+}
+
+func ValidStateTransition(src State, dst State) bool {
+	return slices.Contains(stateTransitionMap[src], dst)
+}
+
+/**
+* Task
+ */
 // Task definition
 type Task struct {
 	ID          uuid.UUID
@@ -44,7 +65,7 @@ type Task struct {
 	ExposedPorts nat.PortSet
 	PortBindings map[string]string
 	// Define retry policy on failure
-	RestartPolicy string
+	RestartPolicy container.RestartPolicy
 	// Running time monitoring
 	StartTime  time.Time
 	FinishTime time.Time
@@ -84,12 +105,33 @@ type Config struct {
 	RestartPolicy container.RestartPolicy
 }
 
+func NewConfig(t *Task) *Config {
+	return &Config{
+		Name:          t.Name,
+		ExposedPorts:  t.ExposedPorts,
+		Image:         t.Image,
+		Cpu:           t.Cpu,
+		Memory:        t.Memory,
+		Disk:          t.Disk,
+		RestartPolicy: t.RestartPolicy,
+	}
+}
+
 // Docker encapsulation
 type Docker struct {
 	// Docker SDK client
 	Client *client.Client
 	// Config instance
 	Config Config
+}
+
+func NewDocker(c *Config) *Docker {
+	// Fix "Error response from daemon: client version 1.48 is too new. Maximum supported API version is 1.47"
+	dc, _ := client.NewClientWithOpts(client.WithVersion("1.47"))
+	return &Docker{
+		Client: dc,
+		Config: *c,
+	}
 }
 
 // Docker Task result
