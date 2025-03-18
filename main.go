@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
+	"github.com/docker/docker/client"
 	"github.com/golang-collections/collections/queue"
 	"github.com/google/uuid"
 
@@ -12,6 +14,46 @@ import (
 	"cube/task"
 	"cube/worker"
 )
+
+// Init a task container
+func createContainer() (*task.Docker, *task.DockerResult) {
+	c := task.Config{
+		Name:  "test-container-1",
+		Image: "postgres:13",
+		Env: []string{
+			"POSTGRES_USER=cube",
+			"POSTGRES_PASSWORD=secret",
+		},
+	}
+
+	// Fix "Error response from daemon: client version 1.48 is too new. Maximum supported API version is 1.47"
+	dc, _ := client.NewClientWithOpts(client.WithVersion("1.47"))
+	d := task.Docker{
+		Client: dc,
+		Config: c,
+	}
+
+	result := d.Run()
+	if result.Error != nil {
+		fmt.Printf("%v\n", result.Error)
+		return nil, nil
+	}
+
+	fmt.Printf("Container %s is running with config %v\n", result.ContainerID, c)
+	return &d, &result
+}
+
+// Terminate a task container
+func stopContainer(d *task.Docker, id string) *task.DockerResult {
+	result := d.Stop(id)
+	if result.Error != nil {
+		fmt.Printf("%v\n", result.Error)
+		return nil
+	}
+
+	fmt.Printf("Container %s has been stopped and removed\n", result.ContainerID)
+	return &result
+}
 
 func main() {
 	t := task.Task{
@@ -66,4 +108,14 @@ func main() {
 	}
 
 	fmt.Printf("node: %v\n", n)
+
+	fmt.Printf("create a test container\n")
+	dockerTask, createResult := createContainer()
+	if createResult.Error != nil {
+		fmt.Printf("%v", createResult.Error)
+		os.Exit(1)
+	}
+	time.Sleep(time.Second * 5)
+	fmt.Printf("stopping container %s\n", createResult.ContainerID)
+	_ = stopContainer(dockerTask, createResult.ContainerID)
 }
