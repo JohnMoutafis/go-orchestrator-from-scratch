@@ -41,14 +41,32 @@ func (w *Worker) AddTask(t task.Task) {
 	w.Queue.Enqueue(t)
 }
 
+func (w *Worker) RunTasks() {
+	for {
+		if w.Queue.Len() != 0 {
+			result := w.RunTask()
+			if result.Error != nil {
+				log.Printf("Error running task: %v\n", result.Error)
+			}
+		} else {
+			log.Printf("No tasks to process currently.\n")
+		}
+		log.Println("Sleeping for 10 seconds.")
+		time.Sleep(10 * time.Second)
+	}
+
+}
+
 func (w *Worker) RunTask() task.DockerResult {
 	t := w.Queue.Dequeue()
 	if t == nil {
-		log.Printf("No tasks in the queue")
+		log.Println("No tasks in the queue")
 		return task.DockerResult{Error: nil}
 	}
 
 	taskQueued := t.(task.Task)
+	fmt.Printf("Found task in queue: %v:\n", taskQueued)
+
 	taskPersisted := w.Db[taskQueued.ID]
 	if taskPersisted == nil {
 		taskPersisted = &taskQueued
@@ -63,12 +81,13 @@ func (w *Worker) RunTask() task.DockerResult {
 		case task.Completed:
 			result = w.StopTask(taskQueued)
 		default:
+			fmt.Printf("This is a mistake. taskPersisted: %v, taskQueued: %v\n", taskPersisted, taskQueued)
 			result.Error = errors.New("We should not get here")
 		}
 	} else {
-		result.Error = fmt.Errorf(
-			"Invalid transition from %v to %v", taskPersisted.State, taskQueued.State,
-		)
+		err := fmt.Errorf("Invalid transition from %v to %v", taskPersisted.State, taskQueued.State)
+		result.Error = err
+		return result
 	}
 	return result
 }
