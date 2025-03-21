@@ -1,4 +1,4 @@
-package worker
+package stats
 
 import (
 	"log"
@@ -18,46 +18,47 @@ type Stats struct {
 }
 
 // Stats Helper
-// func (s *Stats) MemUsedKb() uint64 {
-// 	return s.MemStats.MemTotal - s.MemStats.MemAvailable
-// }
+func (s *Stats) MemUsedKb() uint64 {
+	return s.MemStats.Used
+}
 
-// func (s *Stats) MemUsedPercent() uint64 {
-// 	return s.MemStats.MemAvailable / s.MemStats.MemTotal
-// }
+func (s *Stats) MemUsedPercent() uint64 {
+	return uint64(s.MemStats.UsedPercent)
+}
 
-// func (s *Stats) MemAvailableKb() uint64 {
-// 	return s.MemStats.MemAvailable
-// }
+func (s *Stats) MemAvailableKb() uint64 {
+	return s.MemStats.Available
+}
 
-// func (s *Stats) MemTotalKb() uint64 {
-// 	return s.MemStats.MemTotal
-// }
+func (s *Stats) MemTotalKb() uint64 {
+	return s.MemStats.Total
+}
 
-// func (s *Stats) DiskTotal() uint64 {
-// 	return s.DiskStats.All
-// }
+func (s *Stats) DiskTotal() uint64 {
+	return s.DiskStats.Total
+}
 
-// func (s *Stats) DiskFree() uint64 {
-// 	return s.DiskStats.Free
-// }
+func (s *Stats) DiskFree() uint64 {
+	return s.DiskStats.Free
+}
 
-// func (s *Stats) DiskUsed() uint64 {
-// 	return s.DiskStats.Used
-// }
+func (s *Stats) DiskUsed() uint64 {
+	return s.DiskStats.Used
+}
 
-// func (s *Stats) CpuUsage() float64 {
+func (s *Stats) CpuUsage() (float64, float64, float64, float64) {
 
-// 	idle := s.CpuStats.Idle + s.CpuStats.IOWait
-// 	nonIdle := s.CpuStats.User + s.CpuStats.Nice + s.CpuStats.System + s.CpuStats.IRQ + s.CpuStats.SoftIRQ + s.CpuStats.Steal
-// 	total := idle + nonIdle
+	idle := s.CpuStats.Idle + s.CpuStats.Iowait
+	nonIdle := s.CpuStats.User + s.CpuStats.Nice + s.CpuStats.System + s.CpuStats.Irq + s.CpuStats.Softirq + s.CpuStats.Steal
+	total := idle + nonIdle
 
-// 	if total == 0 {
-// 		return 0.00
-// 	}
+	usagePercent := 0.00
+	if total > 0 {
+		usagePercent = (float64(total) - float64(idle)) / float64(total)
+	}
 
-// 	return (float64(total) - float64(idle)) / float64(total)
-// }
+	return usagePercent, idle, nonIdle, total
+}
 
 // Stat "Aggregator"
 func GetStats() *Stats {
