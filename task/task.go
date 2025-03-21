@@ -64,11 +64,15 @@ type Task struct {
 	// Networking for Docker images
 	ExposedPorts nat.PortSet
 	PortBindings map[string]string
+	HostPorts    nat.PortMap
 	// Define retry policy on failure
 	RestartPolicy container.RestartPolicy
 	// Running time monitoring
 	StartTime  time.Time
 	FinishTime time.Time
+	// Health checks and restarts
+	HealthCheck  string
+	RestartCount int
 }
 
 // Task Event definition
@@ -216,4 +220,22 @@ func (d *Docker) Stop(id string) DockerResult {
 		return DockerResult{Error: err}
 	}
 	return DockerResult{Action: "stop", Result: "success", Error: nil}
+}
+
+// Inspect a container
+type DockerInspectResponse struct {
+	Error     error
+	Container *container.InspectResponse
+}
+
+func (d *Docker) Inspect(containerID string) DockerInspectResponse {
+	dc, _ := client.NewClientWithOpts(client.WithVersion("1.47"))
+	ctx := context.Background()
+	resp, err := dc.ContainerInspect(ctx, containerID)
+	if err != nil {
+		log.Printf("Error inspecting container: %s\n", err)
+		return DockerInspectResponse{Error: err}
+	}
+
+	return DockerInspectResponse{Container: &resp}
 }

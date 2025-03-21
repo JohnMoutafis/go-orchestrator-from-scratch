@@ -1,17 +1,18 @@
 package main
 
 import (
-	"cube/manager"
-	managerApi "cube/manager/api"
-	"cube/task"
-	"cube/worker"
-	workerApi "cube/worker/api"
 	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/golang-collections/collections/queue"
 	"github.com/google/uuid"
+
+	"cube/manager"
+	managerApi "cube/manager/api"
+	"cube/task"
+	"cube/worker"
+	workerApi "cube/worker/api"
 )
 
 func main() {
@@ -31,6 +32,7 @@ func main() {
 
 	go w.RunTasks()
 	go w.CollectStats()
+	go w.UpdateTasks()
 	go wapi.Start()
 
 	fmt.Println("Starting Cube manager")
@@ -41,7 +43,7 @@ func main() {
 
 	go m.ProcessTasks()
 	go m.UpdateTasks()
+	go m.DoHealthChecks()
 
 	mapi.Start()
-
 }
