@@ -34,6 +34,10 @@ const (
 	Failed
 )
 
+func (s State) String() []string {
+	return []string{"Pending", "Scheduled", "Running", "Completed", "Failed"}
+}
+
 // State Machine
 var stateTransitionMap = map[State][]State{
 	Pending:   {Scheduled},
