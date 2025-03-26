@@ -5,12 +5,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/golang-collections/collections/queue"
-	"github.com/google/uuid"
-
 	"cube/manager"
 	managerApi "cube/manager/api"
-	"cube/task"
 	"cube/worker"
 	workerApi "cube/worker/api"
 )
@@ -24,23 +20,15 @@ func main() {
 
 	fmt.Println("Starting Cube worker")
 
-	w1 := worker.Worker{
-		Queue: *queue.New(),
-		Db:    make(map[uuid.UUID]*task.Task),
-	}
-	wapi1 := workerApi.Api{Address: whost, Port: wport, Worker: &w1}
+	const storage_type = "persistent"
+	w1 := worker.New("worker-1", storage_type)
+	wapi1 := workerApi.Api{Address: whost, Port: wport, Worker: w1}
 
-	w2 := worker.Worker{
-		Queue: *queue.New(),
-		Db:    make(map[uuid.UUID]*task.Task),
-	}
-	wapi2 := workerApi.Api{Address: whost, Port: wport + 1, Worker: &w2}
+	w2 := worker.New("worker-2", storage_type)
+	wapi2 := workerApi.Api{Address: whost, Port: wport + 1, Worker: w2}
 
-	w3 := worker.Worker{
-		Queue: *queue.New(),
-		Db:    make(map[uuid.UUID]*task.Task),
-	}
-	wapi3 := workerApi.Api{Address: whost, Port: wport + 2, Worker: &w3}
+	w3 := worker.New("worker-3", storage_type)
+	wapi3 := workerApi.Api{Address: whost, Port: wport + 2, Worker: w3}
 
 	go w1.RunTasks()
 	go w1.UpdateTasks()
@@ -62,7 +50,7 @@ func main() {
 		fmt.Sprintf("%s:%d", whost, wport+2),
 	}
 	//m := manager.New(workers, "greedy")
-	m := manager.NewManager(workers, "epvm")
+	m := manager.NewManager(workers, "epvm", storage_type)
 	mapi := managerApi.Api{Address: mhost, Port: mport, Manager: m}
 
 	go m.ProcessTasks()
