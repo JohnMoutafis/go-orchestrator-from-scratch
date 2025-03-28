@@ -1,10 +1,9 @@
 package cmd
 
 import (
-	"log"
-
 	"github.com/spf13/cobra"
 
+	"cube/logging"
 	"cube/manager"
 	managerApi "cube/manager/api"
 )
@@ -33,14 +32,14 @@ var managerCmd = &cobra.Command{
 		scheduler, _ := cmd.Flags().GetString("scheduler")
 		dbType, _ := cmd.Flags().GetString("dbType")
 
-		log.Println("Starting manager.")
-		m := manager.NewManager(workers, scheduler, dbType)
+		logging.Info.Println("Starting manager...")
+		m := manager.New(workers, scheduler, dbType)
 		api := managerApi.Api{Address: host, Port: port, Manager: m}
 		go m.ProcessTasks()
 		go m.UpdateTasks()
 		go m.DoHealthChecks()
 		go m.UpdateNodeStats()
-		log.Printf("Starting manager API on http://%s:%d", host, port)
+		logging.Info.Printf("Starting manager API on http://%s:%d", host, port)
 		api.Start()
 	},
 }

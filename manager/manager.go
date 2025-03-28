@@ -14,6 +14,7 @@ import (
 	"github.com/golang-collections/collections/queue"
 	"github.com/google/uuid"
 
+	"cube/logging"
 	"cube/node"
 	"cube/scheduler"
 	"cube/store"
@@ -33,7 +34,7 @@ type Manager struct {
 	Scheduler     scheduler.Scheduler
 }
 
-func NewManager(workers []string, schedulerType string, dbType string) *Manager {
+func New(workers []string, schedulerType string, dbType string) *Manager {
 	// Constructor
 	workerTaskMap := make(map[string][]uuid.UUID)
 	taskWorkerMap := make(map[uuid.UUID]string)
@@ -67,12 +68,12 @@ func NewManager(workers []string, schedulerType string, dbType string) *Manager 
 	case "persistent":
 		ts, err = store.NewTaskStore("tasks.db", 0600, "tasks")
 		if err != nil {
-			log.Fatalf("unable to create task store: %v", err)
+			logging.Error.Printf("Unable to create task store: %v", err)
 		}
 
-		es, err = store.NewEventStore("events.db", 0600, "events")
+		es, err = store.NewTaskStore("events.db", 0600, "events")
 		if err != nil {
-			log.Fatalf("unable to create task event store: %v", err)
+			logging.Error.Printf("Unable to create task event store: %v", err)
 		}
 	}
 
@@ -112,7 +113,7 @@ func (m *Manager) AddTask(te task.TaskEvent) {
 func (m *Manager) GetTasks() []*task.Task {
 	tasks, err := m.TaskDb.List()
 	if err != nil {
-		log.Printf("Error getting list of tasks: %v\n", err)
+		logging.Error.Printf("Error getting list of tasks: %v\n", err)
 		return nil
 	}
 	return tasks.([]*task.Task)
@@ -120,66 +121,65 @@ func (m *Manager) GetTasks() []*task.Task {
 
 func (m *Manager) UpdateTasks() {
 	for {
-		log.Println("Checking for task updates from workers")
-		m.updateTasks()
-		log.Println("Task updates completed")
-		log.Println("Sleeping for 15 seconds")
-		time.Sleep(15 * time.Second)
-	}
-}
-
-func (m *Manager) updateTasks() {
-	for _, worker := range m.Workers {
-		log.Printf("Checking worker %v for task updates", worker)
-		url := fmt.Sprintf("http://%s/tasks", worker)
-		resp, err := http.Get(url)
-		if err != nil {
-			log.Printf("Error connecting to %v: %v", worker, err)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Error sending request: %v", err)
-		}
-
-		d := json.NewDecoder(resp.Body)
-		var tasks []*task.Task
-		err = d.Decode(&tasks)
-		if err != nil {
-			log.Printf("Error unmarshalling tasks: %s", err.Error())
-		}
-
-		for _, t := range tasks {
-			log.Printf("Attempting to update task %v", t.ID)
-
-			res, err := m.TaskDb.Get(t.ID.String())
+		logging.Info.Println("Checking for task updates from workers")
+		for _, worker := range m.Workers {
+			logging.Info.Printf("Checking worker %v for task updates", worker)
+			url := fmt.Sprintf("http://%s/tasks", worker)
+			resp, err := http.Get(url)
 			if err != nil {
-				log.Printf("%s\n", err)
-				continue
-			}
-			taskPersisted, ok := res.(*task.Task)
-			if !ok {
-				log.Printf("Cannot convert result %v to task.Task type\n", res)
+				logging.Error.Printf("Error connecting to %v: %v", worker, err)
 				continue
 			}
 
-			if taskPersisted.State != t.State {
-				taskPersisted.State = t.State
+			if resp.StatusCode != http.StatusOK {
+				logging.Error.Printf("Error sending request: %v", err)
+				continue
 			}
 
-			taskPersisted.StartTime = t.StartTime
-			taskPersisted.FinishTime = t.FinishTime
-			taskPersisted.ContainerID = t.ContainerID
-			taskPersisted.HostPorts = t.HostPorts
-			m.TaskDb.Put(taskPersisted.ID.String(), taskPersisted)
+			d := json.NewDecoder(resp.Body)
+			var tasks []*task.Task
+			err = d.Decode(&tasks)
+			if err != nil {
+				logging.Error.Printf("Error unmarshalling tasks: %s", err.Error())
+				continue
+			}
+
+			for _, t := range tasks {
+				logging.Info.Printf("Attempting to update task %v", t.ID)
+
+				res, err := m.TaskDb.Get(t.ID.String())
+				if err != nil {
+					log.Printf("%s\n", err)
+					continue
+				}
+				taskPersisted, ok := res.(*task.Task)
+				if !ok {
+					logging.Error.Printf("Cannot convert result %v to task.Task type\n", res)
+					continue
+				}
+
+				if taskPersisted.State != t.State {
+					taskPersisted.State = t.State
+				}
+
+				taskPersisted.StartTime = t.StartTime
+				taskPersisted.FinishTime = t.FinishTime
+				taskPersisted.ContainerID = t.ContainerID
+				taskPersisted.HostPorts = t.HostPorts
+				m.TaskDb.Put(taskPersisted.ID.String(), taskPersisted)
+			}
 		}
+		logging.Info.Println("Task updates completed")
+		logging.Info.Println("Sleeping for 15 seconds")
+		time.Sleep(15 * time.Second)
 	}
 }
 
 func (m *Manager) ProcessTasks() {
 	for {
-		log.Println("Processing any tasks in the queue")
+		logging.Info.Printf("Processing any tasks in the queue")
 		m.SendWork()
-		log.Println("Sleeping for 10 seconds")
+		logging.Info.Printf("Sleeping for 10 seconds")
 		time.Sleep(10 * time.Second)
 	}
 }
@@ -189,22 +189,22 @@ func (m *Manager) stopTask(worker string, taskID string) {
 	url := fmt.Sprintf("http://%s/tasks/%s", worker, taskID)
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		log.Printf("error creating request to delete task %s: %v", taskID, err)
+		logging.Error.Printf("Error creating request to delete task %s: %v", taskID, err)
 		return
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("error connecting to worker at %s: %v", url, err)
+		logging.Error.Printf("Error connecting to worker at %s: %v", url, err)
 		return
 	}
 
 	if resp.StatusCode != 204 {
-		log.Printf("Error sending request: %v", err)
+		logging.Error.Printf("Error sending request: %v", err)
 		return
 	}
 
-	log.Printf("task %s has been scheduled to be stopped", taskID)
+	logging.Info.Printf("Task %s has been scheduled to be stopped", taskID)
 }
 
 func (m *Manager) SendWork() {
@@ -213,22 +213,22 @@ func (m *Manager) SendWork() {
 		te := e.(task.TaskEvent)
 		err := m.EventDb.Put(te.ID.String(), &te)
 		if err != nil {
-			log.Printf("Error attempting to store task event %s: %s\n", te.ID.String(), err)
+			logging.Error.Printf("Error attempting to store task event %s: %s\n", te.ID.String(), err)
 			return
 		}
-		log.Printf("Pulled %v off pending queue", te)
+		logging.Info.Printf("Pulled %v off pending queue", te)
 
 		taskWorker, ok := m.TaskWorkerMap[te.Task.ID]
 		if ok {
 			res, err := m.TaskDb.Get(te.Task.ID.String())
 			if err != nil {
-				log.Printf("Unable to schedule task: %s", err)
+				logging.Error.Printf("Unable to schedule task: %s", err)
 				return
 			}
 
 			persistedTask, ok := res.(*task.Task)
 			if !ok {
-				log.Printf("Unable to convert task to task.Task type")
+				logging.Error.Println("Unable to convert task to task.Task type")
 				return
 			}
 
@@ -237,8 +237,8 @@ func (m *Manager) SendWork() {
 				return
 			}
 
-			log.Printf(
-				"invalid request: existing task %s is in state %v and cannot transition to the completed state",
+			logging.Warning.Printf(
+				"Invalid request: existing task %s is in state %v and cannot transition to the completed state",
 				persistedTask.ID.String(), persistedTask.State,
 			)
 			return
@@ -247,11 +247,11 @@ func (m *Manager) SendWork() {
 		t := te.Task
 		w, err := m.SelectWorker(t)
 		if err != nil {
-			log.Printf("error selecting worker for task %s: %v", t.ID, err)
+			logging.Error.Printf("Error selecting worker for task %s: %v", t.ID, err)
 			return
 		}
 
-		log.Printf("[manager] selected worker %s for task %s", w.Name, t.ID)
+		logging.Info.Printf("Selected worker %s for task %s", w.Name, t.ID)
 
 		m.WorkerTaskMap[w.Name] = append(m.WorkerTaskMap[w.Name], te.Task.ID)
 		m.TaskWorkerMap[t.ID] = w.Name
@@ -261,13 +261,13 @@ func (m *Manager) SendWork() {
 
 		data, err := json.Marshal(te)
 		if err != nil {
-			log.Printf("Unable to marshal task object: %v.", t)
+			logging.Warning.Printf("Unable to marshal task object: %v.", t)
 		}
 
 		url := fmt.Sprintf("http://%s/tasks", w.Name)
 		resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 		if err != nil {
-			log.Printf("[manager] Error connecting to %v: %v", w, err)
+			logging.Error.Printf("Error connecting to %v: %v", w, err)
 			m.Pending.Enqueue(t)
 			return
 		}
@@ -277,23 +277,23 @@ func (m *Manager) SendWork() {
 			e := workerApi.ErrResponse{}
 			err := d.Decode(&e)
 			if err != nil {
-				fmt.Printf("Error decoding response: %s\n", err.Error())
+				logging.Error.Printf("Error decoding response: %s\n", err.Error())
 				return
 			}
-			log.Printf("Response error (%d): %s", e.HTTPStatusCode, e.Message)
+			logging.Error.Printf("Response error (%d): %s", e.HTTPStatusCode, e.Message)
 			return
 		}
 
 		t = task.Task{}
 		err = d.Decode(&t)
 		if err != nil {
-			fmt.Printf("Error decoding response: %s\n", err.Error())
+			logging.Error.Printf("Error decoding response: %s\n", err.Error())
 			return
 		}
 		w.TaskCount++
-		log.Printf("[manager] received response from worker: %#v\n", t)
+		logging.Info.Printf("Received response from worker: %#v\n", t)
 	} else {
-		log.Println("No work in the queue")
+		logging.Info.Printf("No work in the queue")
 	}
 }
 
@@ -307,42 +307,42 @@ func getHostPort(ports nat.PortMap) *string {
 }
 
 func (m *Manager) checkTaskHealth(t task.Task) error {
-	log.Printf("Calling health check for task %s: %s\n", t.ID, t.HealthCheck)
+	logging.Info.Printf("Calling health check for task %s: %s\n", t.ID, t.HealthCheck)
 
 	w := m.TaskWorkerMap[t.ID]
 	hostPort := getHostPort(t.HostPorts)
 	worker := strings.Split(w, ":")
 	if hostPort == nil {
-		log.Printf("Have not collected task %s host port yet. Skipping.\n", t.ID)
+		logging.Warning.Printf("Have not collected task %s host port yet. Skipping.\n", t.ID)
 		return nil
 	}
 
 	url := fmt.Sprintf("http://%s:%s%s", worker[0], *hostPort, t.HealthCheck)
-	log.Printf("Calling health check for task %s: %s\n", t.ID, url)
+	logging.Info.Printf("Calling health check for task %s: %s\n", t.ID, url)
 	resp, err := http.Get(url)
 	if err != nil {
 		msg := fmt.Sprintf("Error connecting to health check %s", url)
-		log.Println(msg)
+		logging.Error.Println(msg)
 		return errors.New(msg)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		msg := fmt.Sprintf("Error health check for task %s did not return 200\n", t.ID)
-		log.Println(msg)
+		logging.Error.Println(msg)
 		return errors.New(msg)
 	}
 
-	log.Printf("Task %s health check response: %v\n", t.ID, resp.StatusCode)
+	logging.Info.Printf("Task %s health check response: %v\n", t.ID, resp.StatusCode)
 	return nil
 }
 
 // 2. Health Check all the Tasks
 func (m *Manager) DoHealthChecks() {
 	for {
-		log.Println("Performing task health check")
+		logging.Info.Println("Performing task health check")
 		m.doHealthChecks()
-		log.Println("Task health checks completed")
-		log.Println("Sleeping for 60 seconds")
+		logging.Info.Println("Task health checks completed")
+		logging.Info.Println("Sleeping for 60 seconds")
 		time.Sleep(60 * time.Second)
 	}
 }
@@ -380,14 +380,14 @@ func (m *Manager) restartTask(t *task.Task) {
 	}
 	data, err := json.Marshal(te)
 	if err != nil {
-		log.Printf("Unable to marshal task object: %v.\n", t)
+		logging.Error.Printf("Unable to marshal task object: %v.\n", t)
 		return
 	}
 
 	url := fmt.Sprintf("http://%s/tasks", w)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
-		log.Printf("Error connecting to %v: %v\n", w, err)
+		logging.Error.Printf("Error connecting to %v: %v\n", w, err)
 		m.Pending.Enqueue(t)
 		return
 	}
@@ -397,29 +397,29 @@ func (m *Manager) restartTask(t *task.Task) {
 		e := workerApi.ErrResponse{}
 		err := d.Decode(&e)
 		if err != nil {
-			fmt.Printf("Error decoding response: %s\n", err.Error())
+			logging.Error.Printf("Error decoding response: %s\n", err.Error())
 			return
 		}
-		log.Printf("Response error (%d): %s\n", e.HTTPStatusCode, e.Message)
+		logging.Error.Printf("Response error (%d): %s\n", e.HTTPStatusCode, e.Message)
 		return
 	}
 
 	newTask := task.Task{}
 	err = d.Decode(&newTask)
 	if err != nil {
-		fmt.Printf("Error decoding response: %s\n", err.Error())
+		logging.Error.Printf("Error decoding response: %s\n", err.Error())
 		return
 	}
-	log.Printf("%#v\n", t)
+	logging.Info.Printf("%#v\n", t)
 }
 
 func (m *Manager) UpdateNodeStats() {
 	for {
 		for _, node := range m.WorkerNodes {
-			log.Printf("Collecting stats for node %v", node.Name)
+			logging.Info.Printf("Collecting stats for node %v", node.Name)
 			_, err := node.GetStats()
 			if err != nil {
-				log.Printf("error updating node stats: %v", err)
+				logging.Error.Printf("Error updating node stats: %v", err)
 			}
 		}
 		time.Sleep(15 * time.Second)

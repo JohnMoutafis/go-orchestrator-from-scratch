@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 
+	"cube/logging"
 	"cube/stats"
 	"cube/utils"
 )
@@ -42,13 +42,13 @@ func (n *Node) GetStats() (*stats.Stats, error) {
 	resp, err = utils.HTTPWithRetry(http.Get, url)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to connect to %v. Permanent failure.\n", n.Api)
-		log.Println(msg)
+		logging.Error.Println(msg)
 		return nil, errors.New(msg)
 	}
 
 	if resp.StatusCode != 200 {
 		msg := fmt.Sprintf("Error retrieving stats from %v: %v", n.Api, err)
-		log.Println(msg)
+		logging.Error.Println(msg)
 		return nil, errors.New(msg)
 	}
 
@@ -57,8 +57,8 @@ func (n *Node) GetStats() (*stats.Stats, error) {
 	var stats stats.Stats
 	err = json.Unmarshal(body, &stats)
 	if err != nil {
-		msg := fmt.Sprintf("error decoding message while getting stats for node %s", n.Name)
-		log.Println(msg)
+		msg := fmt.Sprintf("Error decoding message while getting stats for node %s", n.Name)
+		logging.Error.Println(msg)
 		return nil, errors.New(msg)
 	}
 
